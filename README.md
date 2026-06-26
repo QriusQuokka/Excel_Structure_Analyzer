@@ -1,5 +1,7 @@
 # Excel Structure Analyzer
 
+[![Live — qriusquokka.github.io](https://img.shields.io/badge/Live-qriusquokka.github.io-2a8c54?style=for-the-badge&logo=githubpages&logoColor=white)](https://qriusquokka.github.io/Excel_Structure_Analyzer/)
+
 처음 받아본, 설명해 줄 사람도 없는 다중 시트 엑셀 파일의 **구조와 시트 간 수식 관계**를
 자동으로 파악해 한 장의 HTML 리포트로 보여주는 도구입니다.
 
