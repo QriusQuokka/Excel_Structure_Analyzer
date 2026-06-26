@@ -107,6 +107,11 @@
             white-space:pre-wrap; }
 
   .foot { max-width:1080px; margin:0 auto; padding:18px 24px 40px; color:#9aa4af; font-size:.8rem; }
+  .credit { margin-top:8px; }
+  .credit b { color:#6b7682; font-weight:700; }
+  .credit a { color:var(--green); text-decoration:none; font-weight:600; }
+  .credit a:hover { text-decoration:underline; color:var(--green-deep); }
+  .credit .sep { margin:0 7px; color:#cdd5dd; }
 </style>
 </head>
 <body>
@@ -173,6 +178,13 @@
   <div class="foot">
     분석 엔진은 브라우저 안에서 Python(Pyodide)으로 실행됩니다. CLI 도구와 동일한 엔진을 사용합니다.
     내려받은 HTML은 인터넷 없이도 그래프가 동작합니다.
+    <div class="credit">
+      만든 사람 <b>QriusQuokka</b>
+      <span class="sep">·</span>
+      <a href="https://github.com/QriusQuokka/Excel_Structure_Analyzer" target="_blank" rel="noopener noreferrer">GitHub</a>
+      <span class="sep">·</span>
+      <a href="https://qriusquokka.github.io/" target="_blank" rel="noopener noreferrer">Blog</a>
+    </div>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
