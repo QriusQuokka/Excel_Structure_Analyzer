@@ -32,7 +32,10 @@
 - ✅ **분석 엔진** (`excel_analyzer/`) 완성 및 검증.
 - ✅ **CLI** (`analyze.py`) 동작.
 - ✅ **HTML 리포트** (`report.py`) — 인터랙티브 그래프 + 표 + 수식 상세, 디자인까지 다듬음.
-- ⬜ **웹페이지(Pyodide) 미착수** ← **다음 작업.** 아래 6번 참조.
+  - 접철 토글 아이콘: 크기 키우고(시인성), 접힘 시 ◂(왼쪽) 방향으로 변경.
+- 🟡 **웹페이지(Pyodide)** — `index.html` + `app.js` **구현 완료**. 로컬 서버에서 정적 서빙·경로는
+  확인했으나, **브라우저에서 실제 분석 동작은 아직 실측 검증 못 함**(이 기기에 Claude 브라우저 확장 미연결).
+  → 사용자가 브라우저로 한 번 돌려보고 확인 필요. 아래 6번 참조.
 
 ## 4. 아키텍처 & 파일 구조
 
@@ -81,29 +84,40 @@ README.md              사용자용 설명서
    - 큰 구획 3개(관계도/시트목록/수식상세): 각각 접철식, **기본 펼침**
    - 탭 UI 는 쓰지 않음(대신 접철식).
 
-## 6. 다음 작업 — Pyodide 웹페이지로 감싸기
+## 6. Pyodide 웹페이지 — 구현 완료(브라우저 실측만 남음)
 
 목표: GitHub Pages 에서 "누구나 접속 → 파일 첨부 → 브라우저 안 분석 → 결과 보기·다운로드".
 
-구현 계획(합의됨):
+구현됨(레포 루트):
 ```
-레포 루트에 추가:
-  index.html   파일 드래그&드롭/선택 UI, 결과 미리보기 iframe, 다운로드 버튼, 로딩 표시
-  app.js       Pyodide 로드 → micropip 로 openpyxl 설치 → excel_analyzer/*.py 를
-               가상 FS 에 기록 → 업로드 파일 바이트를 FS 에 기록 →
-               analyze_workbook() + render_html() 실행 → HTML 문자열 수신
+index.html   드래그&드롭/선택 UI, 프라이버시 안내, 엔진 상태 배너, 결과 iframe 미리보기,
+             HTML 다운로드 버튼, "다른 파일 분석". 색/톤은 리포트와 통일(엑셀 그린).
+app.js       Pyodide(v0.26.4, CDN) 로드 → micropip 로 openpyxl 설치 →
+             ENGINE_FILES(excel_analyzer/*.py)를 fetch 해 가상 FS 에 기록 →
+             업로드 파일 바이트를 /home/pyodide/_uploads 에 기록(업로드 없음) →
+             _run_analysis(path) = analyze_workbook + render_html → HTML 문자열 →
+             iframe.srcdoc 미리보기 + Blob 다운로드. 분석 후 업로드 파일은 FS 에서 unlink.
 ```
-흐름:
-1. 페이지 접속 시 백그라운드로 Pyodide + openpyxl 준비("준비 중…" 표시).
-2. 파일 드래그&드롭/선택 → **업로드 없이** 브라우저가 바이트로 읽어 Pyodide 가상 FS 에 기록.
-3. 엔진 실행 → HTML 문자열 반환.
-4. 같은 페이지 iframe 으로 미리보기 + "HTML 다운로드" 버튼 제공.
-5. 파일은 탭 메모리에만 존재(외부 전송 0건).
+
+### 로컬 테스트 방법(중요: file:// 는 fetch 가 막혀 안 됨 → 반드시 서버로)
+```bash
+python -m http.server 8765        # 레포 루트에서
+# 브라우저로 http://localhost:8765 열기 → 준비 완료 뜨면 sample.xlsx 끌어다 놓기
+```
+
+### 남은 일 / 결정 필요
+- ⬜ **브라우저 실측**: 위 방법으로 sample.xlsx 분석 → 그래프·표·수식·다운로드 동작 확인.
+  (이 기기엔 Claude 브라우저 확장이 미연결이라 코드로는 못 돌려봄.)
+- ⬜ **GitHub Pages 배포 결정**: Settings→Pages 에서 켜야 함(사용자 직접).
+  ⚠️ **레포가 Private 인데 무료 플랜이면 Pages 사이트는 Public 으로 노출됨** — 단, 노출되는 건
+  코드(index/app/엔진 .py)일 뿐 **사용자 엑셀 데이터는 어차피 브라우저 밖으로 안 나감**.
+  코드 공개가 싫으면: 배포 보류 / Pages 비공개(Pro) / 로컬 서버로만 사용 중 택1. 사용자와 상의.
 
 주의/팁:
 - `report.py` 의 그래프는 외부 CDN 불필요(순수 canvas) → 다운로드 HTML 은 오프라인 동작.
-- Pyodide 에서 `excel_analyzer` 패키지를 쓰려면 .py 파일들을 fetch 해서 가상 FS 에 써넣고 import.
+- Pyodide 만 CDN 으로 받음(코드, 데이터 아님). 첫 로딩 ~10MB.
 - 폐쇄망 요구가 생기면 Pyodide/자원을 레포에 내장(현재는 CDN 으로 가기로 함).
+- openpyxl 은 순수 파이썬이라 micropip 로 어떤 Pyodide 버전에서도 설치됨.
 
 ## 7. 실행 / 테스트 방법
 

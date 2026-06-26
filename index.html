@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Excel 구조 분석기</title>
+<style>
+  :root {
+    --green-deep:#155d34; --green:#2a8c54; --green-soft:#e4f3e9;
+    --ink:#2b3a48; --muted:#6b7682; --line:#e3e8ee; --bg:#f6f8fa;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:"Segoe UI","Malgun Gothic",sans-serif; color:var(--ink);
+         background:#fbfcfd; line-height:1.5; }
+  .header { background:linear-gradient(180deg,#1c6b3f,#155d34); color:#fff;
+            padding:26px 0 22px; }
+  .header .inner { max-width:1080px; margin:0 auto; padding:0 24px; }
+  .header h1 { margin:0 0 4px; font-size:1.5rem; font-weight:700; }
+  .header .subtitle { font-size:.9rem; opacity:.92; }
+  .container { max-width:1080px; margin:0 auto; padding:24px; }
+
+  /* 프라이버시 안내 */
+  .privacy { display:flex; gap:10px; align-items:flex-start; background:var(--green-soft);
+             border:1px solid #bfe2cd; border-radius:8px; padding:12px 15px; margin-bottom:20px;
+             font-size:.86rem; color:#14532b; }
+  .privacy b { font-weight:700; }
+  .privacy .ico { font-size:1.05rem; line-height:1.3; }
+
+  /* 엔진 상태 배너 */
+  .status { display:flex; align-items:center; gap:10px; padding:11px 15px; border-radius:8px;
+            font-size:.88rem; font-weight:600; margin-bottom:18px; border:1px solid; }
+  .status.loading { background:#fff8e6; border-color:#f0dca6; color:#8a6d1a; }
+  .status.ready   { background:var(--green-soft); border-color:#bfe2cd; color:#14532b; }
+  .status.error   { background:#fbeaea; border-color:#e6b8b8; color:#b23b3b; }
+  .spinner { width:15px; height:15px; border:2.5px solid #e3d9a8; border-top-color:#a98a1f;
+             border-radius:50%; animation:spin .8s linear infinite; flex:none; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+
+  /* 드롭존 */
+  .dropzone { border:2px dashed #c7d1da; border-radius:12px; background:#fff;
+              padding:40px 24px; text-align:center; transition:.15s;
+              cursor:pointer; }
+  .dropzone:hover { border-color:var(--green); background:#f7fbf8; }
+  .dropzone.dragover { border-color:var(--green); background:var(--green-soft); }
+  .dropzone.disabled { opacity:.55; cursor:not-allowed; pointer-events:none; }
+  .dropzone .big { font-size:1.05rem; font-weight:600; margin-bottom:6px; }
+  .dropzone .small { font-size:.84rem; color:var(--muted); }
+  .dropzone .pick { display:inline-block; margin-top:14px; padding:9px 20px;
+                    background:var(--green); color:#fff; border-radius:7px; font-weight:600;
+                    font-size:.9rem; }
+  .dropzone .pick:hover { background:var(--green-deep); }
+
+  /* 분석 진행 / 결과 */
+  .working { display:none; align-items:center; gap:10px; margin-top:18px;
+             font-size:.9rem; color:var(--muted); font-weight:600; }
+  .working .spinner { border-color:#cfe3d6; border-top-color:var(--green); }
+
+  .result { display:none; margin-top:22px; }
+  .result-bar { display:flex; align-items:center; justify-content:space-between;
+                flex-wrap:wrap; gap:12px; margin-bottom:12px; }
+  .result-title { font-weight:700; font-size:1rem; }
+  .result-title .fname { color:var(--green-deep); }
+  .result-actions { display:flex; gap:10px; }
+  .btn { padding:9px 18px; border-radius:7px; font-size:.88rem; font-weight:600;
+         cursor:pointer; border:1px solid; }
+  .btn-primary { background:var(--green); color:#fff; border-color:var(--green); }
+  .btn-primary:hover { background:var(--green-deep); border-color:var(--green-deep); }
+  .btn-ghost { background:#fff; color:#3f4a57; border-color:#cdd5dd; }
+  .btn-ghost:hover { background:var(--bg); border-color:var(--green); color:var(--green-deep); }
+  .preview-frame { width:100%; height:78vh; border:1px solid var(--line); border-radius:10px;
+                   background:#fff; }
+
+  .errbox { display:none; margin-top:18px; background:#fbeaea; border:1px solid #e6b8b8;
+            color:#8a2e2e; border-radius:8px; padding:14px 16px; font-size:.88rem;
+            white-space:pre-wrap; }
+
+  .foot { max-width:1080px; margin:0 auto; padding:18px 24px 40px; color:#9aa4af;
+          font-size:.8rem; }
+  .foot code { background:var(--bg); padding:1px 6px; border-radius:4px;
+               font-family:Consolas,monospace; }
+</style>
+</head>
+<body>
+  <div class="header">
+    <div class="inner">
+      <h1>Excel 구조 분석기</h1>
+      <div class="subtitle">다중 시트 엑셀의 시트 간 수식 관계를 분석해 한 장의 리포트로 보여줍니다.</div>
+    </div>
+  </div>
+
+  <div class="container">
+
+    <div class="privacy">
+      <span class="ico">🔒</span>
+      <span><b>파일은 이 브라우저 밖으로 나가지 않습니다.</b>
+        업로드(서버 전송) 없이, 분석은 전부 이 페이지 안(브라우저 메모리)에서 이뤄집니다.
+        결과 HTML도 여기서 만들어 바로 내려받습니다. 회사 기밀 엑셀도 안심하고 분석하세요.</span>
+    </div>
+
+    <div id="status" class="status loading">
+      <span class="spinner"></span>
+      <span id="statusText">분석 엔진(Python 런타임)을 준비하는 중입니다… 처음 한 번만 약 10초가량 걸립니다.</span>
+    </div>
+
+    <div id="dropzone" class="dropzone disabled">
+      <div class="big">엑셀 파일을 여기에 끌어다 놓으세요</div>
+      <div class="small">.xlsx / .xlsm 지원 · 파일은 외부로 전송되지 않습니다</div>
+      <span class="pick">파일 선택</span>
+      <input id="fileInput" type="file" accept=".xlsx,.xlsm" hidden>
+    </div>
+
+    <div id="working" class="working">
+      <span class="spinner"></span>
+      <span id="workingText">분석 중…</span>
+    </div>
+
+    <div id="errbox" class="errbox"></div>
+
+    <div id="result" class="result">
+      <div class="result-bar">
+        <div class="result-title">분석 결과 · <span id="resultFname" class="fname"></span></div>
+        <div class="result-actions">
+          <button id="btnDownload" class="btn btn-primary">HTML 다운로드</button>
+          <button id="btnReset" class="btn btn-ghost">다른 파일 분석</button>
+        </div>
+      </div>
+      <iframe id="previewFrame" class="preview-frame" title="분석 결과 미리보기"></iframe>
+    </div>
+
+  </div>
+
+  <div class="foot">
+    분석 엔진은 브라우저 안에서 Python(Pyodide)으로 실행됩니다. CLI 도구와 동일한 엔진을 사용합니다.
+    내려받은 HTML은 인터넷 없이도 그래프가 동작합니다.
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
