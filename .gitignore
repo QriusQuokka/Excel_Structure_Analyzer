@@ -16,6 +16,5 @@ _check.js
 Thumbs.db
 
 # 주의: 실제 업무 엑셀(.xlsx)은 회사 데이터이므로 절대 커밋하지 말 것.
-# 테스트용 합성 데이터인 sample.xlsx 만 예외로 추적한다(아래 강제 포함).
+# 합성 테스트 파일 sample.xlsx 도 레포에 두지 않는다(make_sample.py 로 생성해서 씀).
 *.xlsx
-!sample.xlsx
