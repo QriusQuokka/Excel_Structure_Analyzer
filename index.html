@@ -38,8 +38,7 @@
 
   /* 드롭존 */
   .dropzone { border:2px dashed #c7d1da; border-radius:12px; background:#fff;
-              padding:40px 24px; text-align:center; transition:.15s;
-              cursor:pointer; }
+              padding:36px 24px; text-align:center; transition:.15s; cursor:pointer; }
   .dropzone:hover { border-color:var(--green); background:#f7fbf8; }
   .dropzone.dragover { border-color:var(--green); background:var(--green-soft); }
   .dropzone.disabled { opacity:.55; cursor:not-allowed; pointer-events:none; }
@@ -50,34 +49,64 @@
                     font-size:.9rem; }
   .dropzone .pick:hover { background:var(--green-deep); }
 
-  /* 분석 진행 / 결과 */
+  /* 분석 대기 목록(분석 버튼 전 단계) */
+  .staging { display:none; margin-top:18px; background:#fff; border:1px solid var(--line);
+             border-radius:10px; padding:16px 18px; }
+  .staging h3 { margin:0 0 10px; font-size:.92rem; font-weight:700; }
+  .staging h3 .cnt { color:var(--green-deep); }
+  .stage-list { list-style:none; margin:0 0 14px; padding:0; }
+  .stage-item { display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:7px;
+                border:1px solid #eef1f4; margin-bottom:7px; font-size:.88rem; }
+  .stage-item .nm { font-weight:600; word-break:break-all; }
+  .stage-item .sz { color:var(--muted); font-size:.8rem; white-space:nowrap; }
+  .stage-item .bad { color:#b23b3b; font-size:.8rem; }
+  .stage-item .rm { margin-left:auto; border:none; background:none; color:#9aa4af;
+                    cursor:pointer; font-size:1.1rem; line-height:1; padding:2px 6px; }
+  .stage-item .rm:hover { color:#b23b3b; }
+  .stage-actions { display:flex; gap:10px; align-items:center; }
+
+  /* 공용 버튼 */
+  .btn { padding:9px 18px; border-radius:7px; font-size:.88rem; font-weight:600;
+         cursor:pointer; border:1px solid; }
+  .btn:disabled { opacity:.5; cursor:not-allowed; }
+  .btn-primary { background:var(--green); color:#fff; border-color:var(--green); }
+  .btn-primary:hover:not(:disabled) { background:var(--green-deep); border-color:var(--green-deep); }
+  .btn-ghost { background:#fff; color:#3f4a57; border-color:#cdd5dd; }
+  .btn-ghost:hover:not(:disabled) { background:var(--bg); border-color:var(--green); color:var(--green-deep); }
+
+  /* 분석 진행 */
   .working { display:none; align-items:center; gap:10px; margin-top:18px;
              font-size:.9rem; color:var(--muted); font-weight:600; }
   .working .spinner { border-color:#cfe3d6; border-top-color:var(--green); }
 
+  /* 결과 */
   .result { display:none; margin-top:22px; }
   .result-bar { display:flex; align-items:center; justify-content:space-between;
                 flex-wrap:wrap; gap:12px; margin-bottom:12px; }
   .result-title { font-weight:700; font-size:1rem; }
-  .result-title .fname { color:var(--green-deep); }
-  .result-actions { display:flex; gap:10px; }
-  .btn { padding:9px 18px; border-radius:7px; font-size:.88rem; font-weight:600;
-         cursor:pointer; border:1px solid; }
-  .btn-primary { background:var(--green); color:#fff; border-color:var(--green); }
-  .btn-primary:hover { background:var(--green-deep); border-color:var(--green-deep); }
-  .btn-ghost { background:#fff; color:#3f4a57; border-color:#cdd5dd; }
-  .btn-ghost:hover { background:var(--bg); border-color:var(--green); color:var(--green-deep); }
-  .preview-frame { width:100%; height:78vh; border:1px solid var(--line); border-radius:10px;
+  .result-actions { display:flex; gap:10px; flex-wrap:wrap; }
+
+  /* 파일 탭 목록 */
+  .file-tabs { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px; }
+  .file-tab { display:inline-flex; align-items:center; gap:8px; padding:7px 13px; border-radius:7px;
+              border:1px solid var(--line); background:#fff; cursor:pointer; font-size:.85rem;
+              font-weight:600; color:#3f4a57; }
+  .file-tab:hover { border-color:var(--green); }
+  .file-tab.active { background:var(--green-soft); border-color:var(--green); color:var(--green-deep); }
+  .file-tab.failed { color:#b23b3b; }
+  .file-tab.failed.active { background:#fbeaea; border-color:#e6b8b8; }
+  .file-tab .tab-badge { font-size:.74rem; font-weight:600; padding:1px 7px; border-radius:9px;
+                         background:#eef1f4; color:#55606b; }
+  .file-tab.failed .tab-badge { background:#fbeaea; color:#b23b3b; }
+
+  .preview-frame { width:100%; height:76vh; border:1px solid var(--line); border-radius:10px;
                    background:#fff; }
 
   .errbox { display:none; margin-top:18px; background:#fbeaea; border:1px solid #e6b8b8;
             color:#8a2e2e; border-radius:8px; padding:14px 16px; font-size:.88rem;
             white-space:pre-wrap; }
 
-  .foot { max-width:1080px; margin:0 auto; padding:18px 24px 40px; color:#9aa4af;
-          font-size:.8rem; }
-  .foot code { background:var(--bg); padding:1px 6px; border-radius:4px;
-               font-family:Consolas,monospace; }
+  .foot { max-width:1080px; margin:0 auto; padding:18px 24px 40px; color:#9aa4af; font-size:.8rem; }
 </style>
 </head>
 <body>
@@ -94,7 +123,7 @@
       <span class="ico">🔒</span>
       <span><b>파일은 이 브라우저 밖으로 나가지 않습니다.</b>
         업로드(서버 전송) 없이, 분석은 전부 이 페이지 안(브라우저 메모리)에서 이뤄집니다.
-        결과 HTML도 여기서 만들어 바로 내려받습니다. 회사 기밀 엑셀도 안심하고 분석하세요.</span>
+        결과 HTML과 ZIP도 여기서 만들어 바로 내려받습니다. 회사 기밀 엑셀도 안심하고 분석하세요.</span>
     </div>
 
     <div id="status" class="status loading">
@@ -104,9 +133,19 @@
 
     <div id="dropzone" class="dropzone disabled">
       <div class="big">엑셀 파일을 여기에 끌어다 놓으세요</div>
-      <div class="small">.xlsx / .xlsm 지원 · 파일은 외부로 전송되지 않습니다</div>
+      <div class="small">.xlsx / .xlsm 지원 · 여러 개 한 번에 가능 · 파일은 외부로 전송되지 않습니다</div>
       <span class="pick">파일 선택</span>
-      <input id="fileInput" type="file" accept=".xlsx,.xlsm" hidden>
+      <input id="fileInput" type="file" accept=".xlsx,.xlsm" multiple hidden>
+    </div>
+
+    <div id="staging" class="staging">
+      <h3>분석 대기 — <span class="cnt" id="stageCount">0</span>개 파일</h3>
+      <ul id="stageList" class="stage-list"></ul>
+      <div class="stage-actions">
+        <button id="btnAnalyze" class="btn btn-primary">분석 시작</button>
+        <button id="btnAddMore" class="btn btn-ghost">파일 추가</button>
+        <button id="btnClearAll" class="btn btn-ghost">모두 지우기</button>
+      </div>
     </div>
 
     <div id="working" class="working">
@@ -118,12 +157,14 @@
 
     <div id="result" class="result">
       <div class="result-bar">
-        <div class="result-title">분석 결과 · <span id="resultFname" class="fname"></span></div>
+        <div class="result-title" id="resultTitle">분석 결과</div>
         <div class="result-actions">
-          <button id="btnDownload" class="btn btn-primary">HTML 다운로드</button>
+          <button id="btnDownload" class="btn btn-primary">현재 파일 다운로드</button>
+          <button id="btnDownloadZip" class="btn btn-ghost">전체 ZIP 다운로드</button>
           <button id="btnReset" class="btn btn-ghost">다른 파일 분석</button>
         </div>
       </div>
+      <div id="fileTabs" class="file-tabs"></div>
       <iframe id="previewFrame" class="preview-frame" title="분석 결과 미리보기"></iframe>
     </div>
 
@@ -134,6 +175,7 @@
     내려받은 HTML은 인터넷 없이도 그래프가 동작합니다.
   </div>
 
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

@@ -90,14 +90,20 @@ README.md              사용자용 설명서
 
 구현됨(레포 루트):
 ```
-index.html   드래그&드롭/선택 UI, 프라이버시 안내, 엔진 상태 배너, 결과 iframe 미리보기,
-             HTML 다운로드 버튼, "다른 파일 분석". 색/톤은 리포트와 통일(엑셀 그린).
+index.html   드래그&드롭/선택 UI(여러 파일 가능), 프라이버시 안내, 엔진 상태 배너,
+             "분석 대기" 목록, 파일 탭 전환, 결과 iframe 미리보기, 개별/ZIP 다운로드.
+             색/톤은 리포트와 통일(엑셀 그린). JSZip(CDN)로 ZIP 생성.
 app.js       Pyodide(v0.26.4, CDN) 로드 → micropip 로 openpyxl 설치 →
              ENGINE_FILES(excel_analyzer/*.py)를 fetch 해 가상 FS 에 기록 →
              업로드 파일 바이트를 /home/pyodide/_uploads 에 기록(업로드 없음) →
-             _run_analysis(path) = analyze_workbook + render_html → HTML 문자열 →
-             iframe.srcdoc 미리보기 + Blob 다운로드. 분석 후 업로드 파일은 FS 에서 unlink.
+             _run_analysis(path)=analyze_workbook+render_html → {html,name,sheets,deps} JSON →
+             파일별 탭 미리보기 + Blob 개별 다운로드 + JSZip 전체 다운로드. 분석 후 FS unlink.
 ```
+
+UX 흐름(2026-06-26 개선): 파일 선택 → 바로 분석하지 않고 **"분석 대기" 목록**에 쌓음
+(추가/제거/모두지우기) → **[분석 시작]** 클릭 → 여러 파일을 순차 분석(한 파일 실패해도
+나머지 계속, 실패는 탭에 "실패" 표시) → 파일 탭으로 결과 전환 + 개별/ZIP 다운로드.
+파일 간(A.xlsx↔B.xlsx) 관계는 분석 안 함 — 엔진은 한 통합문서 내부만 봄(A안: 파일별 개별 리포트).
 
 ### 로컬 테스트 방법(중요: file:// 는 fetch 가 막혀 안 됨 → 반드시 서버로)
 ```bash
