@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# 생성 산출물 (분석 결과 HTML) — 회사 데이터가 담길 수 있으므로 커밋 금지
+*_analysis.html
+
+# 임시/점검 파일
+_check.js
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 주의: 실제 업무 엑셀(.xlsx)은 회사 데이터이므로 절대 커밋하지 말 것.
+# 테스트용 합성 데이터인 sample.xlsx 만 예외로 추적한다(아래 강제 포함).
+*.xlsx
+!sample.xlsx
