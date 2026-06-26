@@ -32,8 +32,8 @@ python -m http.server 8765
 # 브라우저에서 http://localhost:8765 접속
 ```
 
-**GitHub Pages로 배포 시**에는 `https://qriusquokka.github.io/Excel_Structure_Analyzer/` 에서
-바로 사용할 수 있습니다. (첫 접속 때만 런타임 ~10MB를 받아 준비하는 데 약 10초가 걸립니다.)
+**바로 사용**: 👉 **<https://qriusquokka.github.io/Excel_Structure_Analyzer/>**
+(첫 접속 때만 런타임 ~10MB를 받아 준비하는 데 약 10초가 걸립니다.)
 
 ## 사용법 2 — CLI
 

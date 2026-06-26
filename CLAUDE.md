@@ -33,9 +33,10 @@
 - ✅ **CLI** (`analyze.py`) 동작.
 - ✅ **HTML 리포트** (`report.py`) — 인터랙티브 그래프 + 표 + 수식 상세, 디자인까지 다듬음.
   - 접철 토글 아이콘: 크기 키우고(시인성), 접힘 시 ◂(왼쪽) 방향으로 변경.
-- 🟡 **웹페이지(Pyodide)** — `index.html` + `app.js` **구현 완료**. 로컬 서버에서 정적 서빙·경로는
-  확인했으나, **브라우저에서 실제 분석 동작은 아직 실측 검증 못 함**(이 기기에 Claude 브라우저 확장 미연결).
-  → 사용자가 브라우저로 한 번 돌려보고 확인 필요. 아래 6번 참조.
+- ✅ **웹페이지(Pyodide)** — `index.html` + `app.js`. 다중 파일 업로드 → [분석 시작] → 파일별
+  리포트 탭 + 개별/ZIP 다운로드. **브라우저 실측 통과**.
+- ✅ **GitHub Pages 배포 완료** — https://qriusquokka.github.io/Excel_Structure_Analyzer/ (정상 동작 확인).
+  레포는 Public 전환됨(무료 플랜 Pages 사용 위해). 아래 6번 참조.
 
 ## 4. 아키텍처 & 파일 구조
 
@@ -111,19 +112,24 @@ python -m http.server 8765        # 레포 루트에서
 # 브라우저로 http://localhost:8765 열기 → 준비 완료 뜨면 sample.xlsx 끌어다 놓기
 ```
 
-### 남은 일 / 결정 필요
-- ⬜ **브라우저 실측**: 위 방법으로 sample.xlsx 분석 → 그래프·표·수식·다운로드 동작 확인.
-  (이 기기엔 Claude 브라우저 확장이 미연결이라 코드로는 못 돌려봄.)
-- ⬜ **GitHub Pages 배포 결정**: Settings→Pages 에서 켜야 함(사용자 직접).
-  ⚠️ **레포가 Private 인데 무료 플랜이면 Pages 사이트는 Public 으로 노출됨** — 단, 노출되는 건
-  코드(index/app/엔진 .py)일 뿐 **사용자 엑셀 데이터는 어차피 브라우저 밖으로 안 나감**.
-  코드 공개가 싫으면: 배포 보류 / Pages 비공개(Pro) / 로컬 서버로만 사용 중 택1. 사용자와 상의.
+### 완료됨
+- ✅ **브라우저 실측 통과** (로컬 + 배포 사이트 양쪽).
+- ✅ **GitHub Pages 배포 완료** — Settings→Pages, `main`/`(root)`, Source="Deploy from a branch".
+  레포는 Public 으로 전환함(무료 플랜은 Private 레포 Pages 불가). 공개되는 건 코드뿐이고
+  사용자 엑셀 데이터는 브라우저 밖으로 안 나감. 공개 전 비밀정보 스캔 완료(매칭 0).
+
+### ⚠️ Pages 함정 — 반드시 알아둘 것
+- GitHub Pages 는 기본 **Jekyll** 빌드라 **밑줄(`_`)로 시작하는 파일을 무시**한다.
+  그래서 `excel_analyzer/__init__.py` 가 404 로 빠져 "엔진 준비 실패"가 났었다.
+  → **레포 루트의 빈 `.nojekyll` 파일**로 Jekyll 을 꺼서 해결(이미 커밋됨). 이 파일 지우지 말 것.
 
 주의/팁:
 - `report.py` 의 그래프는 외부 CDN 불필요(순수 canvas) → 다운로드 HTML 은 오프라인 동작.
 - Pyodide 만 CDN 으로 받음(코드, 데이터 아님). 첫 로딩 ~10MB.
 - 폐쇄망 요구가 생기면 Pyodide/자원을 레포에 내장(현재는 CDN 으로 가기로 함).
 - openpyxl 은 순수 파이썬이라 micropip 로 어떤 Pyodide 버전에서도 설치됨.
+- `main` 에 푸시하면 Pages 가 자동 재배포(1~2분). 배포 검증은 curl 로
+  `https://qriusquokka.github.io/Excel_Structure_Analyzer/excel_analyzer/__init__.py` 가 200 인지 보면 됨.
 
 ## 7. 실행 / 테스트 방법
 
