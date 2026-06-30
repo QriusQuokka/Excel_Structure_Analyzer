@@ -27,14 +27,15 @@
   **절대 git 에 커밋·푸시하지 말 것.** (`.gitignore` 에 이미 반영됨)
 - 테스트는 합성 데이터 `sample.xlsx`(make_sample.py 로 생성, 회사 데이터 아님)로만 한다.
 
-## 3. 현재 상태 (2026-06-26 기준)
+## 3. 현재 상태 (2026-06-30 기준)
 
-- ✅ **분석 엔진** (`excel_analyzer/`) 완성 및 검증.
+- ✅ **분석 엔진** (`excel_analyzer/`) 완성 및 검증. **셀 단위 그래프까지 구축**(v2).
 - ✅ **CLI** (`analyze.py`) 동작.
 - ✅ **HTML 리포트** (`report.py`) — 인터랙티브 그래프 + 표 + 수식 상세, 디자인까지 다듬음.
   - 접철 토글 아이콘: 크기 키우고(시인성), 접힘 시 ◂(왼쪽) 방향으로 변경.
+- ✅ **셀 단위 추적(v2)** 추가 — 시트 화살표 클릭 드릴다운 + 셀 추적기(흐름도). 아래 5번 7항·10절 참조.
 - ✅ **웹페이지(Pyodide)** — `index.html` + `app.js`. 다중 파일 업로드 → [분석 시작] → 파일별
-  리포트 탭 + 개별/ZIP 다운로드. **브라우저 실측 통과**.
+  리포트 탭 + 개별/ZIP 다운로드. **브라우저 실측 통과**. (셀 추적 v2 도 동일 엔진이라 자동 반영.)
 - ✅ **GitHub Pages 배포 완료** — https://qriusquokka.github.io/Excel_Structure_Analyzer/ (정상 동작 확인).
   레포는 Public 전환됨(무료 플랜 Pages 사용 위해). 아래 6번 참조.
 
@@ -42,10 +43,10 @@
 
 ```
 excel_analyzer/
-  __init__.py          공개 API (analyze_workbook, WorkbookAnalysis, SheetInfo, Dependency)
-  formula_parser.py    수식 문자열에서 시트 참조 추출
-  analyzer.py          openpyxl 로 시트/수식/의존관계/순환참조 분석 엔진
-  report.py            분석 결과 → 단일 HTML 리포트 렌더링
+  __init__.py          공개 API (analyze_workbook, WorkbookAnalysis, SheetInfo, Dependency, CellNode, CellRef)
+  formula_parser.py    수식에서 셀/시트 참조 추출 (openpyxl Tokenizer 기반)
+  analyzer.py          openpyxl 로 시트/수식/의존관계/순환참조 + 셀 단위 그래프 분석 엔진
+  report.py            분석 결과 → 단일 HTML 리포트 렌더링(시트 관계도 + 셀 추적기)
 analyze.py             CLI 진입점:  python analyze.py 파일.xlsx
 make_sample.py         검증용 합성 통합문서(sample.xlsx) 생성
 requirements.txt       openpyxl
@@ -54,20 +55,25 @@ README.md              사용자용 설명서
 
 **핵심 동작 원리**
 - 수식은 openpyxl `data_only=False` 로 읽어 **수식 원문**을 얻는다.
-- `formula_parser.py` 가 정규식으로 `시트명!셀` 참조를 뽑되, **실제 존재하는 시트명 목록과 대조**해
-  오탐(함수명·텍스트)을 거른다. 처리하는 케이스: 한글 시트명, 공백 포함 `'시트 이름'!`,
-  따옴표 이스케이프 `''`, 3D 참조 `Sheet1:Sheet3!`(사이 시트로 확장), 외부 참조 `[1]Sheet!`(별도 집계).
+- `formula_parser.py` 가 openpyxl 내장 **`Tokenizer`** 로 수식을 토큰화해 `OPERAND/RANGE`(셀·범위)만
+  뽑는다(정규식보다 함수명·문자열·날짜 오탐이 적다). 시트명은 **실제 존재하는 시트 목록과 대조**,
+  셀 부분은 셀/범위 형태인지 검증(정의된 이름 등 제외). 처리 케이스: 한글/공백 시트명 `'시트 이름'!`,
+  따옴표 이스케이프 `''`, **동일시트 참조(`A1`)**, 3D `Sheet1:Sheet3!`(사이 시트 확장), 외부 `[1]Sheet!`.
+  - `extract_cell_references()` 가 1차 함수, `extract_sheet_references()` 는 거기서 파생(단일 소스).
 - **화살표 방향 = 데이터 흐름**: 셀이 `SheetB!A1` 을 참조하면 데이터는 SheetB → 현재시트로 흐른다.
-  그래서 의존 엣지는 `from=참조된 시트(출처)`, `to=참조하는 시트(소비)` 로 저장한다.
-- `report.py` 의 시트 간 관계도는 **외부 라이브러리 없는 순수 Canvas + JS**로 그린다.
-  → 다운로드한 HTML 을 인터넷 없이 열어도 드래그·화살표가 동작한다.
+  의존 엣지는 `from=참조된 셀/시트(출처)`, `to=참조하는 셀/시트(소비)` 로 저장.
+- **셀 단위 그래프**(`analyzer.py`): `WorkbookAnalysis.cells` = `{ "시트!셀": CellNode(precedents/dependents) }`.
+  범위(`A1:A100`)는 펼치지 않고 **범위 단위 유지**하되, 하류(dependents) 연결만 멤버 셀로 전개
+  (상한 `MAX_RANGE_CELLS=4096`, 초과·전체열/행은 전개 생략 → 폭발 방지). `edge_cells` = 시트쌍 드릴다운용.
+- `report.py` 의 시트 관계도·셀 추적기는 **외부 라이브러리 없는 순수 Canvas/SVG + JS**.
+  → 다운로드한 HTML 을 인터넷 없이 열어도 드래그·화살표·추적이 동작한다.
 
 ## 5. 결정 로그 (왜 이렇게 했는가 — 번복 금지)
 
 1. **출력 = HTML 리포트** (Mermaid 아님. Mermaid 는 폐기됨).
-2. **분석 범위 = .xlsx/.xlsm 의 시트 단위 관계.**
+2. **분석 범위 = .xlsx/.xlsm 의 시트 단위 + 셀 단위 관계.**
    구버전 `.xls` 는 안내 메시지("xlsx 로 다시 저장 후 사용")와 함께 거부.
-   셀 단위 추적은 향후 확장으로 보류(현재 `Dependency.links` 에 (셀, 수식) 이미 저장 — 확장 발판 있음).
+   셀 단위 추적은 v2(2026-06-30)에서 구현 완료 — 아래 7항·10절 참조.
 3. **웹 배포 = GitHub Pages(정적) + Pyodide.**
    - JS 재작성(SheetJS) 대신 **Pyodide**(Python→WASM)로 기존 엔진을 그대로 브라우저에서 실행.
      이유: 단일 소스(CLI·웹 공용) 유지 + openpyxl 의 수식 읽기 충실도(SheetJS 는 공유수식 누락 위험).
@@ -82,8 +88,17 @@ README.md              사용자용 설명서
    - 상단 통계 칩: 시트 수 / 총 수식 / 시트 간 참조 / **순환 참조 있음·없음**
    - 시트 목록 표: 시트명(역할 배지)·사용 범위·크기·수식 수·숫자 셀·텍스트 셀·수식 비율·참조하는 시트
    - **시트별 수식 상세**: 시트 기준 전체 수식, 접철식, **기본 접힘**, 펼치면 최대 ~12줄 후 스크롤
-   - 큰 구획 3개(관계도/시트목록/수식상세): 각각 접철식, **기본 펼침**
+   - 큰 구획 4개(관계도/**셀 추적**/시트목록/수식상세): 각각 접철식, **기본 펼침**
    - 탭 UI 는 쓰지 않음(대신 접철식).
+7. **셀 단위 추적(v2, 2026-06-30 확정·구현)** — 표현 규칙은 합성 데이터 시제품으로 검증 후 사용자 승인:
+   - 시트 관계도 유지 + **화살표 클릭 → 두 시트 사이 셀 연결(소비셀 ← 출처셀) 드릴다운**.
+   - **셀 추적기**: 데이터 왼쪽(출처)→오른쪽(소비) 흐름. 선택 셀 기준 전후 최대 **5단 창(WINDOW=5)**.
+     입력값 셀이면 맨 왼쪽, 모두 받기만 하는 최종 셀이면 맨 오른쪽에 정렬.
+   - 레벨은 **최장경로(longest-path)** 로 매김 — 단순 BFS 최단거리는 3D참조 등에서 의존셀이 같은 열에
+     뭉개짐(폐기). 최장경로면 의존관계 셀이 반드시 다른 열에 놓여 **시트 내부 가공 흐름까지** 정확히 펼쳐짐.
+   - **같은 시트의 같은 단계 셀은 시트 박스 하나로 묶어** 표시. 5단 초과 깊이는 양끝에 "N단 더 있음" 표기.
+   - 박스 클릭 시 그 셀로 재중심이동(경로 breadcrumb). 범위/외부참조는 점선 말단 노드.
+   - 동일시트 셀 참조(`A1`)는 셀 추적엔 포함, 시트 관계도엔 미포함(`self_refs` 로 집계).
 
 ## 6. Pyodide 웹페이지 — 구현 완료(브라우저 실측만 남음)
 
@@ -152,3 +167,19 @@ python analyze.py sample.xlsx --no-open   # 브라우저 안 열기
 - 사용자는 개발을 직접 깊게 다루기보다 **방향성을 충분히 논의하고 계획을 확정한 뒤 개발 착수**하는 것을 선호.
   큰 변경 전에는 트레이드오프를 솔직히 설명하고 확인받을 것.
 - 데이터 프라이버시에 민감 → 외부 전송이 생길 수 있는 모든 행위는 사전에 반드시 짚어줄 것.
+
+## 10. 셀 단위 추적(v2) 구현 메모
+
+- **엔진 데이터 모델** (`analyzer.py`):
+  - `CellRef(sheet, ref, is_range, is_external, raw)` — 한 선행참조.
+  - `CellNode(sheet, coord, formula, value, precedents:list[CellRef], dependents:list[str])`.
+  - `WorkbookAnalysis.cells: dict["시트!셀", CellNode]`, `.edge_cells: dict["from->to", [{dst,src,formula}]]`,
+    `.range_capped`(상한 초과로 하류 전개 생략한 범위 수).
+  - 2-패스: ① 모든 셀의 수식/값·시트통계 기록 → ② 수식 참조를 풀어 precedents/dependents/시트엣지/드릴다운 구성.
+- **리포트 JS** (`report.py` `_SCRIPT`): 시트 그래프(canvas, 엣지 hover/click 히트테스트)+`showEdge`(드릴다운),
+  셀 추적기(`subgraph`→`longestLevels`→`renderFlow`+`drawFlowEdges` SVG). 데이터는 `__CELLS__`/`__EDGECELLS__`/
+  `__SHEETS__` 로 주입. 대형 파일은 셀 JSON 임베드로 HTML 이 커질 수 있음(필요 시 경량화 여지).
+- **검증 방식**: `sample.xlsx` 의 다단계 체인(입력→가공 단계→표C/표D→요약)으로 확인.
+  레벨링 로직은 Node 시뮬레이션으로 단위 검증 가능(입력!A2=맨왼쪽 5단, 요약!A4=맨오른쪽, 3D참조 분리 등).
+- **시제품**(임시, 레포 밖 scratchpad: `prototype_gen.py`/`prototype.html`)으로 표현을 먼저 합의한 뒤 본 엔진 이식.
+  본 구현 완료 후 시제품은 폐기 대상(레포에 없음).

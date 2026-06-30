@@ -1,7 +1,8 @@
 """분석 결과를 단일 HTML 리포트로 렌더링한다.
 
-시트 간 관계도는 외부 라이브러리 없이 순수 Canvas + JavaScript 로 그려지므로
-다운로드한 HTML 을 인터넷 없이 열어도 드래그·화살표가 그대로 동작한다.
+시트 간 관계도와 셀 단위 추적기는 모두 외부 라이브러리 없이 순수 Canvas/SVG +
+JavaScript 로 그려지므로, 다운로드한 HTML 을 인터넷 없이 열어도 드래그·화살표·
+추적이 그대로 동작한다(프라이버시: 데이터가 기기 밖으로 나가지 않는다).
 
 노드 색은 무지개(장식)가 아니라 시트의 역할(입력단/가공/산출단/독립)을 의미로
 구분한다 — 분석 도구다운 신뢰감·가독성을 위해서다.
@@ -101,7 +102,9 @@ def _formula_panels(a: WorkbookAnalysis, roles: dict[str, str]) -> str:
     panels = []
     for s in sheets_with_formulas:
         body_rows = "\n".join(
-            f"<tr><td class='cell-coord'>{_esc(coord)}</td>"
+            f"<tr class='fml-row' data-sheet=\"{_esc(s.name)}\" data-coord=\"{_esc(coord)}\" "
+            f"title='클릭하면 이 셀을 셀 단위 추적에서 펼칩니다'>"
+            f"<td class='cell-coord'>{_esc(coord)}</td>"
             f"<td class='formula-text'>{_esc(formula)}</td></tr>"
             for coord, formula in s.formulas
         )
@@ -157,7 +160,8 @@ def _warning_block(a: WorkbookAnalysis) -> str:
         )
     if a.self_refs:
         items.append(
-            f"같은 시트 안을 참조하는 수식이 {a.self_refs}개 있습니다(관계도에서는 생략)."
+            f"같은 시트 안을 참조하는 수식이 {a.self_refs}개 있습니다"
+            "(시트 관계도에서는 생략, 셀 추적에는 반영)."
         )
     if not items:
         return ""
@@ -176,6 +180,26 @@ def _graph_data(a: WorkbookAnalysis, roles: dict[str, str]) -> tuple[str, str]:
         json.dumps(nodes, ensure_ascii=False),
         json.dumps(edges, ensure_ascii=False),
     )
+
+
+def _cells_json(a: WorkbookAnalysis) -> str:
+    """셀 단위 그래프를 추적기 JS 가 쓰는 형태의 JSON 으로."""
+    out = {}
+    for key, n in a.cells.items():
+        precs = []
+        for p in n.precedents:
+            if p.is_external:
+                precs.append({"kind": "external", "raw": p.raw})
+            else:
+                precs.append({"kind": "range" if p.is_range else "cell",
+                              "sheet": p.sheet, "ref": p.ref})
+        out[key] = {"formula": n.formula, "value": n.value,
+                    "precedents": precs, "dependents": n.dependents}
+    return json.dumps(out, ensure_ascii=False)
+
+
+def _sheets_json(a: WorkbookAnalysis) -> str:
+    return json.dumps([s.name for s in a.sheets], ensure_ascii=False)
 
 
 # ── 정적 자원 (CSS / JS) ─────────────────────────────────────────────────────
@@ -238,6 +262,52 @@ _STYLE = """
   .lg-box { width:14px; height:14px; border-radius:3px; border:1.5px solid; display:inline-block; }
   .flow-caption { font-size:.8rem; color:#55606b; margin-top:8px; }
 
+  /* 시트쌍 드릴다운 */
+  #edgeDetail { margin-top:14px; font-size:.85rem; }
+  #edgeDetail.empty { color:#9aa4af; }
+  .pair { padding:6px 12px; border:1px solid #eef1f4; border-bottom:none; display:flex; gap:10px; align-items:center; }
+  .pair:last-child { border-bottom:1px solid #eef1f4; }
+  .pair .dst { font-family:Consolas,monospace; font-weight:700; color:#155d34; cursor:pointer; }
+  .pair .dst:hover { text-decoration:underline; }
+  .pair .arr { color:#9aa6b2; }
+  .pair .src { font-family:Consolas,monospace; color:#37414c; }
+  .pair .fml { margin-left:auto; font-family:Consolas,monospace; font-size:.76rem; color:#8a95a1;
+               max-width:46%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+  /* 셀 추적기 */
+  .tracer-hint { font-size:.8rem; color:#6b7682; margin-bottom:10px; }
+  .tracer-controls { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:6px; }
+  .tracer-controls label { font-size:.85rem; color:#3f4a57; }
+  .tracer-controls select, .tracer-controls input { font-size:.86rem; padding:6px 10px;
+               border:1px solid #cdd5dd; border-radius:6px; font-family:inherit; }
+  .tracer-controls button { font-size:.86rem; padding:6px 14px; border:1px solid #2a8c54;
+               background:#2a8c54; color:#fff; border-radius:6px; font-weight:600; cursor:pointer; }
+  .tracer-controls button:hover { background:#247a49; }
+  .crumb { font-size:.78rem; color:#6b7682; margin:8px 0; }
+  .crumb a { color:#1a8f7a; cursor:pointer; text-decoration:underline; }
+  .tracer { position:relative; margin-top:10px; }
+  .cols { position:relative; display:flex; gap:48px; align-items:flex-start; overflow-x:auto; padding:6px 4px 12px; }
+  .flowcol { display:flex; flex-direction:column; gap:16px; min-width:118px; z-index:1; }
+  .flowcol h4 { font-size:.72rem; color:#6b7682; font-weight:700; text-align:center; white-space:nowrap; margin-bottom:2px; }
+  .group { border:1px solid #d4dbe2; border-radius:8px; background:#fff; padding:6px; box-shadow:0 1px 2px rgba(0,0,0,.05); }
+  .group.hassel { border-color:#1a6b3c; box-shadow:0 2px 8px rgba(26,107,60,.16); }
+  .gh { font-size:.74rem; font-weight:700; color:#3f4a57; text-align:center; padding:2px 4px 5px;
+        border-bottom:1px solid #eef1f4; margin-bottom:5px; white-space:nowrap; }
+  .group.hassel .gh { color:#14532b; }
+  .gcells { display:flex; flex-direction:column; gap:5px; }
+  .gcell { position:relative; z-index:1; font-family:Consolas,monospace; font-size:.8rem; color:#2b3a48;
+           background:#f7f9fb; border:1px solid #e3e8ee; border-radius:5px; padding:5px 9px; cursor:pointer;
+           text-align:center; white-space:nowrap; }
+  .gcell:hover { border-color:#2a8c54; background:#eef7f1; }
+  .gcell.sel { background:#e4f3e9; border-color:#1a6b3c; color:#14532b; font-weight:700; }
+  .gcell.leaf { cursor:default; color:#6b7682; border-style:dashed; }
+  .gcell.leaf:hover { background:#f7f9fb; border-color:#e3e8ee; }
+  .gcell small { display:block; font-size:.62rem; color:#9aa4af; font-family:inherit; font-weight:400; }
+  .gcell.sel small { color:#3f7d56; }
+  .clipnote { font-size:.7rem; color:#b0763a; text-align:center; margin-top:6px; white-space:nowrap; }
+  #flowSvg { position:absolute; top:0; left:0; pointer-events:none; overflow:visible; z-index:0; }
+  .tracer-none { color:#aab2bc; font-size:.85rem; text-align:center; padding:18px 0; }
+
   /* 시트별 수식 상세 */
   .formula-sheet { margin-bottom:8px; border:1px solid #e9edf1; border-radius:6px; overflow:hidden; }
   .formula-sheet-header { padding:9px 14px; cursor:pointer; background:#f6f8fa; display:flex;
@@ -255,6 +325,9 @@ _STYLE = """
   .formula-table th { background:#f6f8fa; padding:7px 12px; text-align:left; font-weight:600;
                       color:#55606b; border-bottom:1px solid #e9edf1; position:sticky; top:0; z-index:1; }
   .formula-table td { padding:5px 12px; border-bottom:1px solid #f1f4f7; vertical-align:top; }
+  .formula-table tbody tr.fml-row { cursor:pointer; }
+  .formula-table tbody tr.fml-row:hover td { background:#f3faf6; }
+  .formula-table tbody tr.fml-row:hover .cell-coord { text-decoration:underline; }
   .cell-coord { font-family:"Consolas",monospace; font-weight:700; color:#155d34; white-space:nowrap; }
   .formula-text { font-family:"Consolas",monospace; color:#37414c; word-break:break-all; }
 
@@ -274,9 +347,12 @@ function toggleCollapse(headerEl) {
   }
 }
 
-// ── 그래프 데이터 ────────────────────────────────────────────────────────────
+// ── 데이터 (서버에서 주입) ───────────────────────────────────────────────────
 const NODES = __NODES__;
 const EDGES = __EDGES__;
+const EDGECELLS = __EDGECELLS__;
+const CELLS = __CELLS__;
+const SHEETS = __SHEETS__;
 
 // 역할별 색 (report.py 의 ROLE_COLORS 와 동일)
 const ROLE_COLORS = {
@@ -286,10 +362,11 @@ const ROLE_COLORS = {
   isolated:     { bg:'#f3f4f6', border:'#b0b7c0', text:'#5a6470' }
 };
 
+// ── 시트 간 관계도 (Canvas) ─────────────────────────────────────────────────
 const NODE_H = 34, MIN_SPACING = 64, PAD_X = 130, PAD_Y = 50, FONT = '600 12px "Malgun Gothic", sans-serif';
 const canvas = document.getElementById('graphCanvas');
 const ctx = canvas.getContext('2d');
-let dpr = 1, pos = {}, sizes = {}, dragNode = null, dragOfsX = 0, dragOfsY = 0;
+let dpr = 1, pos = {}, sizes = {}, dragNode = null, dragOfsX = 0, dragOfsY = 0, seg = [], hoverSeg = -1;
 
 function computeSizes() {
   ctx.font = FONT;
@@ -298,7 +375,6 @@ function computeSizes() {
     sizes[nd.id] = { w, h: NODE_H };
   });
 }
-
 function setupCanvas() {
   dpr = window.devicePixelRatio || 1;
   const cssW = canvas.parentElement.clientWidth;
@@ -308,7 +384,6 @@ function setupCanvas() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   computeSizes();
 }
-
 function buildLayers() {
   const inDeg = {}, adj = {};
   NODES.forEach(nd => { inDeg[nd.id] = 0; adj[nd.id] = []; });
@@ -330,14 +405,12 @@ function buildLayers() {
   NODES.forEach(nd => { const l = layer[nd.id]; (groups[l] = groups[l] || []).push(nd.id); });
   return { layer, groups };
 }
-
 function calcRequiredHeight() {
   if (!NODES.length) return 380;
   const { groups } = buildLayers();
   const maxCount = Math.max(...Object.values(groups).map(g => g.length));
   return Math.max(380, PAD_Y * 2 + maxCount * MIN_SPACING);
 }
-
 function computeInitialPos() {
   const cssW = canvas.getBoundingClientRect().width;
   const cssH = canvas.getBoundingClientRect().height;
@@ -354,17 +427,14 @@ function computeInitialPos() {
   });
   return newPos;
 }
-
 function resetLayout() { pos = computeInitialPos(); render(); }
 
-// 박스(center, 반폭 hw, 반높이 hh) 경계에서 방향 (ux,uy) 로 나가는 지점
 function boxEdge(cx, cy, hw, hh, ux, uy) {
   const tx = ux !== 0 ? hw / Math.abs(ux) : Infinity;
   const ty = uy !== 0 ? hh / Math.abs(uy) : Infinity;
   const t = Math.min(tx, ty);
   return { x: cx + ux * t, y: cy + uy * t };
 }
-
 function roundRect(x, y, w, h, r) {
   ctx.beginPath();
   ctx.moveTo(x + r, y);
@@ -374,7 +444,6 @@ function roundRect(x, y, w, h, r) {
   ctx.arcTo(x, y, x + w, y, r);
   ctx.closePath();
 }
-
 function drawArrow(sx, sy, ex, ey, hi) {
   const dx = ex - sx, dy = ey - sy, len = Math.sqrt(dx*dx + dy*dy);
   if (len < 1) return;
@@ -388,25 +457,22 @@ function drawArrow(sx, sy, ex, ey, hi) {
   ctx.lineTo(ex - headLen*Math.cos(theta+ang), ey - headLen*Math.sin(theta+ang));
   ctx.closePath(); ctx.fill();
 }
-
 function render() {
   const W = canvas.getBoundingClientRect().width, H = canvas.getBoundingClientRect().height;
   ctx.clearRect(0, 0, W, H);
+  seg = [];
   if (!NODES.length) return;
-
-  // 엣지
-  EDGES.forEach(e => {
+  EDGES.forEach((e, i) => {
     const A = pos[e.from], B = pos[e.to], sa = sizes[e.from], sb = sizes[e.to];
     if (!A || !B || !sa || !sb) return;
     const dx = B.x - A.x, dy = B.y - A.y, len = Math.sqrt(dx*dx + dy*dy) || 1;
     const ux = dx/len, uy = dy/len;
     const s = boxEdge(A.x, A.y, sa.w/2, sa.h/2, ux, uy);
     const en = boxEdge(B.x, B.y, sb.w/2, sb.h/2, -ux, -uy);
-    const hi = dragNode !== null && (e.from === dragNode || e.to === dragNode);
+    const hi = i === hoverSeg || (dragNode !== null && (e.from === dragNode || e.to === dragNode));
     drawArrow(s.x, s.y, en.x, en.y, hi);
+    seg.push({ i, x1: s.x, y1: s.y, x2: en.x, y2: en.y, from: e.from, to: e.to });
   });
-
-  // 노드 (사각형 박스)
   ctx.font = FONT; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   NODES.forEach(nd => {
     const p = pos[nd.id], sz = sizes[nd.id]; if (!p || !sz) return;
@@ -421,13 +487,12 @@ function render() {
     ctx.fillStyle = c.text; ctx.fillText(nd.name, p.x, p.y + 0.5);
   });
 }
-
 function clientToCanvas(e) {
   const rect = canvas.getBoundingClientRect();
   const src = e.touches ? e.touches[0] : e;
   return { x: src.clientX - rect.left, y: src.clientY - rect.top };
 }
-function hitTest(mx, my) {
+function hitNode(mx, my) {
   for (let i = NODES.length - 1; i >= 0; i--) {
     const nd = NODES[i], p = pos[nd.id], sz = sizes[nd.id];
     if (!p || !sz) continue;
@@ -435,20 +500,32 @@ function hitTest(mx, my) {
   }
   return null;
 }
+function distSeg(px, py, s) {
+  const dx = s.x2 - s.x1, dy = s.y2 - s.y1, l2 = dx*dx + dy*dy;
+  let t = l2 ? ((px - s.x1)*dx + (py - s.y1)*dy) / l2 : 0;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (s.x1 + t*dx), py - (s.y1 + t*dy));
+}
+function hitEdge(mx, my) { let best = -1, bd = 8; seg.forEach(s => { const d = distSeg(mx, my, s); if (d < bd) { bd = d; best = s.i; } }); return best; }
 canvas.addEventListener('mousedown', e => {
-  const {x, y} = clientToCanvas(e), hit = hitTest(x, y);
+  const {x, y} = clientToCanvas(e), hit = hitNode(x, y);
   if (hit !== null) { dragNode = hit; dragOfsX = x - pos[hit].x; dragOfsY = y - pos[hit].y;
     canvas.style.cursor = 'grabbing'; e.preventDefault(); }
 });
 canvas.addEventListener('mousemove', e => {
   const {x, y} = clientToCanvas(e);
   if (dragNode !== null) { pos[dragNode] = { x: x - dragOfsX, y: y - dragOfsY }; render(); }
-  else { canvas.style.cursor = hitTest(x, y) !== null ? 'grab' : 'default'; }
+  else { const en = hitEdge(x, y); if (en !== hoverSeg) { hoverSeg = en; render(); }
+    canvas.style.cursor = hitNode(x, y) !== null ? 'grab' : (en >= 0 ? 'pointer' : 'default'); }
 });
 canvas.addEventListener('mouseup', () => { dragNode = null; canvas.style.cursor = 'default'; });
-canvas.addEventListener('mouseleave', () => { dragNode = null; canvas.style.cursor = 'default'; });
+canvas.addEventListener('mouseleave', () => { dragNode = null; if (hoverSeg !== -1) { hoverSeg = -1; render(); } });
+canvas.addEventListener('click', e => {
+  const {x, y} = clientToCanvas(e); if (hitNode(x, y) !== null) return;
+  const en = hitEdge(x, y); if (en >= 0) { const s = EDGES[en]; showEdge(s.from, s.to); }
+});
 canvas.addEventListener('touchstart', e => {
-  const {x, y} = clientToCanvas(e), hit = hitTest(x, y);
+  const {x, y} = clientToCanvas(e), hit = hitNode(x, y);
   if (hit !== null) { dragNode = hit; dragOfsX = x - pos[hit].x; dragOfsY = y - pos[hit].y; e.preventDefault(); }
 }, { passive: false });
 canvas.addEventListener('touchmove', e => {
@@ -457,7 +534,162 @@ canvas.addEventListener('touchmove', e => {
 }, { passive: false });
 canvas.addEventListener('touchend', () => { dragNode = null; });
 
-function initGraph() { setupCanvas(); pos = computeInitialPos(); render(); }
+function nameOf(id) { const n = NODES.find(n => n.id === id); return n ? n.name : ''; }
+function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function jsAttr(s) { return escHtml(String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'")); }
+function showEdge(from, to) {
+  const fn = nameOf(from), tn = nameOf(to), list = EDGECELLS[fn + '->' + tn] || [];
+  const el = document.getElementById('edgeDetail');
+  el.classList.remove('empty');
+  let h = '<div style="margin-bottom:8px"><b>' + escHtml(fn) + '</b> → <b>' + escHtml(tn) +
+          '</b> 사이 셀 연결 ' + list.length + '건 <span style="color:#8a95a1;font-size:.8rem">(소비 셀 ← 출처 셀)</span></div>';
+  list.forEach(p => {
+    h += '<div class="pair"><span class="dst" onclick="quickKey(\'' + jsAttr(p.dst) + '\')">' + escHtml(p.dst) + '</span>'
+       + '<span class="arr">←</span><span class="src">' + escHtml(p.src) + '</span>'
+       + '<span class="fml" title="' + escHtml(p.formula) + '">' + escHtml(p.formula) + '</span></div>';
+  });
+  el.innerHTML = h;
+}
+
+// ── 셀 단위 추적기 ───────────────────────────────────────────────────────────
+const LIMIT = 12, WINDOW = 5;
+let path = [];
+function populateTracer() {
+  const sel = document.getElementById('selSheet');
+  SHEETS.forEach(s => { const o = document.createElement('option'); o.value = s; o.textContent = s; sel.appendChild(o); });
+}
+function quick(sheet, cell) { document.getElementById('selSheet').value = sheet; document.getElementById('inpCell').value = cell; trace(); }
+function quickKey(key) { const i = key.lastIndexOf('!'); center(key.slice(0, i), key.slice(i + 1), true); }
+function trace() { center(document.getElementById('selSheet').value,
+    document.getElementById('inpCell').value.trim().toUpperCase().replace(/\$/g, ''), true); }
+function center(sheet, coord, reset) {
+  if (!coord) return;
+  const key = sheet + '!' + coord;
+  if (reset) path = [key];
+  else { const ix = path.indexOf(key); path = ix >= 0 ? path.slice(0, ix + 1) : [...path, key]; }
+  document.getElementById('selSheet').value = sheet;
+  document.getElementById('inpCell').value = coord;
+  document.getElementById('tracer').style.display = 'block';
+  renderCrumb(); renderFlow(key);
+}
+function renderCrumb() {
+  document.getElementById('crumb').innerHTML = '경로: ' + path.map((k, i) =>
+    i === path.length - 1 ? ('<b>' + escHtml(k) + '</b>') : ('<a onclick="jump(' + i + ')">' + escHtml(k) + '</a>')).join(' → ');
+}
+function jump(i) { const k = path[i], j = k.lastIndexOf('!'); path = path.slice(0, i + 1); center(k.slice(0, j), k.slice(j + 1), false); }
+
+function bfsUp(start) {
+  const seen = {}, edges = [], q = [[start, 0]]; seen[start] = 1;
+  while (q.length) { const it = q.shift(), k = it[0], d = it[1]; if (d <= -LIMIT) continue;
+    const c = CELLS[k]; if (!c) continue;
+    c.precedents.forEach(p => { const sk = p.kind === 'external' ? ('ext:' + p.raw) : (p.sheet + '!' + p.ref);
+      edges.push([sk, k]); if (!seen[sk]) { seen[sk] = 1; q.push([sk, d - 1]); } }); }
+  return { seen, edges };
+}
+function bfsDown(start) {
+  const seen = {}, edges = [], q = [[start, 0]]; seen[start] = 1;
+  while (q.length) { const it = q.shift(), k = it[0], d = it[1]; if (d >= LIMIT) continue;
+    const c = CELLS[k]; if (!c) continue;
+    (c.dependents || []).forEach(dep => { edges.push([k, dep]); if (!seen[dep]) { seen[dep] = 1; q.push([dep, d + 1]); } }); }
+  return { seen, edges };
+}
+function subgraph(sel0) {
+  const up = bfsUp(sel0), dn = bfsDown(sel0), nodes = {};
+  Object.keys(up.seen).forEach(k => nodes[k] = 1); Object.keys(dn.seen).forEach(k => nodes[k] = 1); nodes[sel0] = 1;
+  const eset = {}, edges = [];
+  up.edges.concat(dn.edges).forEach(e => { if (!nodes[e[0]] || !nodes[e[1]]) return;
+    const id = e[0] + '' + e[1]; if (!eset[id]) { eset[id] = 1; edges.push(e); } });
+  return { nodes: Object.keys(nodes), edges };
+}
+function longestLevels(nodes, edges) {     // 부분그래프 내 최장 입력경로 길이로 레벨 결정
+  const preds = {}; nodes.forEach(n => preds[n] = []); edges.forEach(e => { if (preds[e[1]]) preds[e[1]].push(e[0]); });
+  const memo = {}, stk = {};
+  function lv(n) { if (memo[n] !== undefined) return memo[n]; stk[n] = 1; let m = 0;
+    (preds[n] || []).forEach(p => { if (!stk[p]) m = Math.max(m, lv(p) + 1); }); stk[n] = 0; return memo[n] = m; }
+  nodes.forEach(lv); return memo;
+}
+function groupKey(n) { return n.indexOf('ext:') === 0 ? '외부 통합문서' : n.slice(0, n.lastIndexOf('!')); }
+function nodeMeta(n) {
+  if (n.indexOf('ext:') === 0) return { clickable: false, label: n.slice(4), sub: '외부파일' };
+  const cell = n.slice(n.lastIndexOf('!') + 1);
+  if (cell.indexOf(':') >= 0) return { clickable: false, label: cell, sub: '범위' };
+  const c = CELLS[n];
+  if (!c) return { clickable: false, label: cell, sub: '없음' };
+  return { clickable: true, label: cell, sub: c.formula ? '수식' : '입력값' };
+}
+function cssesc(s) { return s.replace(/["\\]/g, '\\$&'); }
+function renderFlow(sel0) {
+  const g = subgraph(sel0), lv = longestLevels(g.nodes, g.edges), s0 = lv[sel0] || 0;
+  let mn = s0, mx = s0; g.nodes.forEach(n => { if (lv[n] < mn) mn = lv[n]; if (lv[n] > mx) mx = lv[n]; });
+  const upAll = s0 - mn, downAll = mx - s0; let L = upAll, R = downAll;
+  while (L + R + 1 > WINDOW) { if (L >= R && L > 0) L--; else if (R > 0) R--; else break; }
+  const lo = s0 - L, hi = s0 + R, show = n => lv[n] >= lo && lv[n] <= hi;
+  const cols = document.getElementById('cols'); cols.innerHTML = '<svg id="flowSvg"></svg>';
+  for (let l = lo; l <= hi; l++) {
+    const col = document.createElement('div'); col.className = 'flowcol';
+    const rel = l - s0, head = document.createElement('h4');
+    head.textContent = rel < 0 ? ('상류 ' + (-rel) + '단') : (rel > 0 ? ('하류 ' + rel + '단') : '선택 셀');
+    col.appendChild(head);
+    const groups = {}; g.nodes.forEach(n => { if (lv[n] !== l) return; const gk = groupKey(n); (groups[gk] = groups[gk] || []).push(n); });
+    const gks = Object.keys(groups);
+    if (!gks.length) { const e = document.createElement('div'); e.className = 'tracer-none'; e.textContent = '—'; col.appendChild(e); }
+    gks.forEach(gk => {
+      const arr = groups[gk], hasSel = arr.indexOf(sel0) >= 0;
+      const box = document.createElement('div'); box.className = 'group' + (hasSel ? ' hassel' : '');
+      const gh = document.createElement('div'); gh.className = 'gh'; gh.textContent = gk; box.appendChild(gh);
+      const gc = document.createElement('div'); gc.className = 'gcells';
+      arr.forEach(n => {
+        const m = nodeMeta(n), chip = document.createElement('div');
+        chip.className = 'gcell' + (n === sel0 ? ' sel' : '') + (m.clickable ? '' : ' leaf');
+        chip.setAttribute('data-key', n);
+        chip.innerHTML = escHtml(m.label) + '<small>' + m.sub + '</small>';
+        if (m.clickable) chip.onclick = () => { const j = n.lastIndexOf('!'); center(n.slice(0, j), n.slice(j + 1), false); };
+        gc.appendChild(chip);
+      });
+      box.appendChild(gc); col.appendChild(box);
+    });
+    if (l === lo && upAll > L) { const c = document.createElement('div'); c.className = 'clipnote'; c.textContent = '◂ 상류 ' + (upAll - L) + '단 더 있음'; col.appendChild(c); }
+    if (l === hi && downAll > R) { const c = document.createElement('div'); c.className = 'clipnote'; c.textContent = '하류 ' + (downAll - R) + '단 더 있음 ▸'; col.appendChild(c); }
+    cols.appendChild(col);
+  }
+  requestAnimationFrame(() => drawFlowEdges(g.edges.filter(e => show(e[0]) && show(e[1]))));
+}
+function drawFlowEdges(edges) {
+  const cols = document.getElementById('cols'), svg = document.getElementById('flowSvg');
+  if (!svg) return;
+  const base = cols.getBoundingClientRect();
+  svg.setAttribute('width', cols.scrollWidth); svg.setAttribute('height', cols.scrollHeight);
+  let body = '<defs><marker id="ah" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">'
+           + '<path d="M0,0 L7,3 L0,6 Z" fill="#9aa6b2"/></marker></defs>';
+  edges.forEach(e => {
+    const A = cols.querySelector('[data-key="' + cssesc(e[0]) + '"]'), B = cols.querySelector('[data-key="' + cssesc(e[1]) + '"]');
+    if (!A || !B) return;
+    const ra = A.getBoundingClientRect(), rb = B.getBoundingClientRect();
+    const x1 = ra.right - base.left, y1 = ra.top - base.top + ra.height / 2;
+    const x2 = rb.left - base.left, y2 = rb.top - base.top + rb.height / 2, mx = (x1 + x2) / 2;
+    body += '<path d="M' + x1 + ',' + y1 + ' C' + mx + ',' + y1 + ' ' + mx + ',' + y2 + ' ' + (x2 - 3) + ',' + y2 + '" fill="none" stroke="#9aa6b2" stroke-width="1.6" marker-end="url(#ah)"/>';
+  });
+  svg.innerHTML = body;
+}
+
+// 수식 상세에서 행 클릭 → 셀 단위 추적으로 연결
+function traceCell(sheet, coord) {
+  const body = document.getElementById('tracer').closest('.card-body');
+  if (body && body.classList.contains('hidden')) {
+    body.classList.remove('hidden');
+    if (body.previousElementSibling) body.previousElementSibling.classList.remove('collapsed');
+  }
+  center(sheet, coord, true);
+  document.getElementById('tracer').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+document.addEventListener('click', e => {
+  const tr = e.target.closest && e.target.closest('.fml-row');
+  if (!tr) return;
+  if (window.getSelection && String(window.getSelection())) return;  // 드래그 선택 중이면 무시
+  traceCell(tr.dataset.sheet, tr.dataset.coord);
+});
+
+function initGraph() { setupCanvas(); pos = computeInitialPos(); render(); populateTracer(); }
 window.addEventListener('resize', () => { setupCanvas(); render(); });
 window.addEventListener('load', initGraph);
 """
@@ -466,7 +698,14 @@ window.addEventListener('load', initGraph);
 def render_html(a: WorkbookAnalysis) -> str:
     roles = _roles(a)
     nodes_json, edges_json = _graph_data(a, roles)
-    script = _SCRIPT.replace("__NODES__", nodes_json).replace("__EDGES__", edges_json)
+    script = (
+        _SCRIPT
+        .replace("__NODES__", nodes_json)
+        .replace("__EDGES__", edges_json)
+        .replace("__EDGECELLS__", json.dumps(a.edge_cells, ensure_ascii=False))
+        .replace("__CELLS__", _cells_json(a))
+        .replace("__SHEETS__", _sheets_json(a))
+    )
     generated = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     return f"""<!DOCTYPE html>
@@ -496,12 +735,32 @@ def render_html(a: WorkbookAnalysis) -> str:
     </div>
     <div class="card-body">
       <div class="graph-toolbar">
-        <span class="graph-hint">노드(시트)를 드래그해 배치를 바꿀 수 있습니다. 화살표는 데이터 흐름(참조 대상 → 참조하는 시트) 방향입니다.</span>
+        <span class="graph-hint">노드(시트)를 드래그해 배치를 바꿀 수 있습니다. 화살표는 데이터 흐름(참조 대상 → 참조하는 시트) 방향이며, <b>화살표를 클릭</b>하면 아래에 두 시트 사이의 셀 연결이 나옵니다.</span>
         <button class="btn-reset" onclick="resetLayout()">배치 초기화</button>
       </div>
       <canvas id="graphCanvas"></canvas>
       <div class="legend">{_legend()}</div>
       <div class="flow-caption">{_flow_caption(a)}</div>
+      <div id="edgeDetail" class="empty">시트를 잇는 화살표를 클릭하면 여기에 셀 연결(소비 셀 ← 출처 셀)이 표시됩니다.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header" onclick="toggleCollapse(this)">
+      셀 단위 추적
+      <span class="toggle-icon">▾</span>
+    </div>
+    <div class="card-body">
+      <div class="tracer-hint">데이터는 <b>왼쪽(출처) → 오른쪽(소비)</b>으로 흐릅니다. 시트·셀을 고르고 [추적]하면 선택 셀 기준 전후로 최대 5단계까지 펼쳐집니다 — 최초 입력값이면 맨 왼쪽, 모두 받기만 하는 최종 셀이면 맨 오른쪽에 놓입니다. 박스를 클릭하면 그 셀로 이동해 계속 따라갈 수 있습니다.</div>
+      <div class="tracer-controls">
+        <label>시트 <select id="selSheet"></select></label>
+        <label>셀 <input id="inpCell" size="7" placeholder="예: A1"></label>
+        <button onclick="trace()">추적</button>
+      </div>
+      <div class="crumb" id="crumb"></div>
+      <div class="tracer" id="tracer" style="display:none">
+        <div class="cols" id="cols"><svg id="flowSvg"></svg></div>
+      </div>
     </div>
   </div>
 
